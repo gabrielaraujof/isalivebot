@@ -1,0 +1,16 @@
+version: '3.1'
+
+# Build dockerfile and set environments
+services:
+  app:
+    build:
+      context: .
+    image: isalivebot:latest
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - TELEGRAM_BOT_DOMAIN=${TELEGRAM_BOT_DOMAIN}
+      - CHAT_ID=${CHAT_ID}
+      - NODE_ENV=${NODE_ENV:-production}
+    command: node main.js
+    restart: always
+
