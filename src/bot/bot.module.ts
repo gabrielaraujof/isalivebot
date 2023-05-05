@@ -7,6 +7,8 @@ import { DiscordModule } from '@discord-nestjs/core';
 
 import { DiscordBotToken } from '../helper/contants';
 import { GatewayService } from './gateway/gateway.service';
+import { MessageService } from './message/message.service';
+import { GuildService } from './guild/guild.service';
 
 @Module({
   imports: [
@@ -30,6 +32,6 @@ import { GatewayService } from './gateway/gateway.service';
     }),
     HttpModule,
   ],
-  providers: [GatewayService],
+  providers: [GatewayService, MessageService, GuildService],
 })
 export class BotModule {}

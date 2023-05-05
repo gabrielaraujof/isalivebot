@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
 
-import { Client, Presence, ActivityType, VoiceState } from 'discord.js';
+import {
+  Client,
+  Presence,
+  ActivityType,
+  VoiceState,
+  Activity,
+} from 'discord.js';
 import { InjectDiscordClient, Once, On } from '@discord-nestjs/core';
-
-import { ChatID, TelegramBotDomain } from '../../helper/contants';
 import { firstValueFrom } from 'rxjs';
+
+import { MessageService } from '../message/message.service';
+import { GuildService } from '../guild/guild.service';
 
 @Injectable()
 export class GatewayService {
@@ -15,8 +21,8 @@ export class GatewayService {
   constructor(
     @InjectDiscordClient()
     private readonly client: Client,
-    private httpService: HttpService,
-    private config: ConfigService,
+    private messenger: MessageService,
+    private guild: GuildService,
   ) {}
 
   @Once('ready')
@@ -33,41 +39,41 @@ export class GatewayService {
 
     this.logger.log(`presenceUpdate: ${JSON.stringify(newPresence)}`);
 
-    const streamingActivity = newPresence.activities.find(
-      (activity) => activity.type === ActivityType.Streaming,
-    );
+    const isPlaying = (activity: Activity) =>
+      activity.type === ActivityType.Playing;
+    const oldPlayingActivity = oldPresence.activities.find(isPlaying);
+    const newPlayingActivity = newPresence.activities.find(isPlaying);
 
-    const member = newPresence.member;
-    if (streamingActivity) {
-      this.logger.log(
-        `${member?.user.username || 'Someone'} just started streaming ${
-          streamingActivity.name
-        }!`,
-      );
+    if (!oldPlayingActivity && newPlayingActivity) {
+      try {
+        const guild = await this.guild.getGuild(newPresence?.guild?.id);
+        const member = await guild.members.fetch(newPresence.member?.id ?? '');
+        await firstValueFrom(
+          this.messenger.notifyIsPlaying(member, newPlayingActivity),
+        );
+      } catch (error) {
+        this.logger.error(error);
+      }
     }
   }
 
   @On('voiceStateUpdate')
-  async onVoiceState(oldVoiceState: VoiceState, newVoiceState: VoiceState) {
+  async onVoiceState(_: VoiceState, newVoiceState: VoiceState) {
     this.logger.log(`voiceStateUpdate: ${JSON.stringify(newVoiceState)}`);
-    if (newVoiceState.streaming) {
-      const guild = await this.client.guilds.cache.get(newVoiceState.guild.id);
-      const channel = await guild?.channels.fetch(
-        newVoiceState.channel?.id ?? '',
-      );
-      const user = await guild?.members.fetch(newVoiceState.member?.id ?? '');
 
-      const message = `${user?.displayName} started streaming on ${guild?.name} ${channel?.name}`;
-      this.logger.log(message);
-      const chatId = this.config.get(ChatID);
-      const url = `${this.config.get(TelegramBotDomain)}/notify`;
-      this.logger.log(url, message, chatId);
-      await firstValueFrom(
-        this.httpService.post(`${this.config.get(TelegramBotDomain)}/notify`, {
-          message,
-          chatId,
-        }),
-      );
+    if (newVoiceState.streaming) {
+      try {
+        const guild = await this.guild.getGuild(newVoiceState?.guild?.id);
+        const channel = await guild?.channels.fetch(
+          newVoiceState.channel?.id ?? '',
+        );
+        const user = await guild?.members.fetch(newVoiceState.member?.id ?? '');
+        await firstValueFrom(
+          this.messenger.notifyIsStreaming(guild, user, channel),
+        );
+      } catch (error) {
+        this.logger.error(error);
+      }
     }
   }
 }
